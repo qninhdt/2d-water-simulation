@@ -52,7 +52,13 @@ export const chunkShader = new THREE.ShaderMaterial({
     uniform sampler2D blockTexture;
 
     void main() {
-      gl_FragColor = texture(blockTexture, texcoord);
+      vec4 color = texture(blockTexture, texcoord);
+
+      if (color.a < 0.1) {
+        discard;
+      }
+
+      gl_FragColor = color;
     } 
   `,
 });

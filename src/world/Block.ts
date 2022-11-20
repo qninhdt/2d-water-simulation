@@ -22,6 +22,6 @@ export class Block {
 
   setData(data: number) {
     data >>= 0;
-    this.materialType = data & ((1 << 3) - 1);
+    this.materialType = data & ((1 << 6) - 1);
   }
 }

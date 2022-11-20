@@ -3,6 +3,7 @@ import { Block } from "./Block";
 import * as THREE from "three";
 import { MaterialType, MaterialUtil } from "./MaterialType";
 import { chunkShader } from "@/shader/chunkShader";
+import { BufferAttribute } from "three";
 
 function getBlockVertexData(
   x: number,
@@ -44,6 +45,9 @@ function getBlockVertexData(
   return data;
 }
 
+function hash(coord: Coordinate) {
+  return coord.x + (coord.y << 6);
+}
 export class Chunk {
   // chunk coordinate
   coord: Coordinate;
@@ -53,9 +57,15 @@ export class Chunk {
   solidMesh: THREE.Mesh;
   gridLines: THREE.Group;
 
+  simulateWater: boolean;
+
+  waterBlocks: Map<number, Coordinate>;
+
   constructor(coord: Coordinate) {
     this.coord = coord.clone();
+    this.waterBlocks = new Map();
     this.blocks = new Int8Array(64 * 64);
+    this.simulateWater = true;
 
     let solidGeometry = new THREE.BufferGeometry();
     solidGeometry.setAttribute(
@@ -81,16 +91,98 @@ export class Chunk {
     for (let y = 0; y <= 64; ++y) {
       this.buildGridLine(0, y, 64, y);
     }
+
+    setInterval(this.updateWater.bind(this), 100);
   }
 
   update(deltaTime: number): void {}
+
+  addWater(coord: Coordinate, size: number) {
+    let coordId = hash(coord);
+
+    if (this.waterBlocks.has(coordId)) {
+      let oldBlock = new Block({ data: this.blocks[coord.y * 64 + coord.x] });
+      let current = oldBlock.materialType - MaterialType.WATER_1 + 1;
+      size = Math.min(8, current + size);
+    }
+
+    this.waterBlocks.set(coordId, coord);
+
+    this.blocks[coord.y * 64 + coord.x] = new Block({
+      materialType: MaterialType.WATER_1 + size - 1,
+    }).getData();
+  }
 
   getBlock(coord: Coordinate): Block {
     return new Block({ data: this.blocks[coord.y * 64 + coord.x] });
   }
 
   setBlock(coord: Coordinate, block: Block) {
+    let oldBlock = new Block({ data: this.blocks[coord.y * 64 + coord.x] });
+    if (MaterialUtil.isWater(block.materialType)) {
+      this.waterBlocks.set(hash(coord), coord);
+      // this.addWater(coord, block.materialType - MaterialType.WATER_1 + 1);
+    } else {
+      if (MaterialUtil.isWater(oldBlock.materialType)) {
+        let coordId = hash(coord);
+        this.waterBlocks.delete(coordId);
+      }
+    }
     this.blocks[coord.y * 64 + coord.x] = block.getData();
+    // }
+  }
+
+  updateWater() {
+    if (!this.simulateWater) return;
+
+    let waterDelta: Map<number, [Coordinate, number]> = new Map();
+
+    this.waterBlocks.forEach((coord, coordId) => {
+      let block = this.getBlock(coord);
+      let belowCoord = new Coordinate(coord.x, coord.y - 1);
+      let belowCoordId = hash(belowCoord);
+      let belowBlock = this.getBlock(belowCoord);
+
+      if (
+        (MaterialUtil.isWater(belowBlock.materialType) &&
+          belowBlock.materialType != MaterialType.WATER_8) ||
+        belowBlock.materialType == MaterialType.AIR
+      ) {
+        if (waterDelta.has(coordId)) {
+          let old = waterDelta.get(coordId);
+          waterDelta.set(coordId, [old[0], old[1] - 1]);
+        } else {
+          waterDelta.set(coordId, [coord, -1]);
+        }
+        if (waterDelta.has(belowCoordId)) {
+          let old = waterDelta.get(belowCoordId);
+          waterDelta.set(belowCoordId, [old[0], old[1] + 1]);
+        } else {
+          waterDelta.set(belowCoordId, [belowCoord, +1]);
+        }
+      }
+    });
+
+    waterDelta.forEach(([coord, delta], coordId) => {
+      let block = this.getBlock(coord);
+      if (block.materialType == MaterialType.AIR) {
+        this.setBlock(
+          coord,
+          new Block({ materialType: MaterialType.WATER_1 + delta - 1 })
+        );
+      } else if (block.materialType + delta < MaterialType.WATER_1) {
+        this.waterBlocks.delete(coordId);
+        this.setBlock(coord, new Block({ materialType: MaterialType.AIR }));
+      } else {
+        if (delta == 0) console.log(1);
+        this.setBlock(
+          coord,
+          new Block({ materialType: block.materialType + delta })
+        );
+      }
+    });
+
+    this.buildMesh();
   }
 
   buildGridLine(x1: number, y1: number, x2: number, y2: number) {
@@ -127,9 +219,10 @@ export class Chunk {
       }
     }
 
-    (
-      this.solidMesh.geometry.attributes.vertexData as THREE.BufferAttribute
-    ).array = new Float32Array(solidMeshVertices);
+    this.solidMesh.geometry.setAttribute(
+      "vertexData",
+      new BufferAttribute(new Float32Array(solidMeshVertices), 1)
+    );
 
     this.solidMesh.geometry.setIndex(solidMeshIndices);
   }

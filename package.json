@@ -10,10 +10,12 @@
   "author": "qninhdt",
   "license": "MIT",
   "dependencies": {
+    "hashmap": "^2.4.0",
     "normalize.css": "^8.0.1",
     "three": "^0.146.0"
   },
   "devDependencies": {
+    "@types/hashmap": "^2.3.1",
     "@types/three": "^0.146.0",
     "cross-env": "^7.0.3",
     "css-loader": "^6.7.2",

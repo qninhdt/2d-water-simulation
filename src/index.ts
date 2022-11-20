@@ -3,8 +3,13 @@ import "normalize.css";
 import "@assets/style.css";
 import { World } from "@/world/World";
 import { Coordinate } from "./core/Coordinate";
+import { BlockOutline } from "./graphic/BlockOutline";
+import { MaterialType } from "./world/MaterialType";
+import { BlockMenu } from "./BlockMenu";
 
 const wrapper = document.getElementById("game");
+const blockOutline = new BlockOutline();
+const blockMenu = new BlockMenu();
 
 // init
 const camera = new THREE.OrthographicCamera(
@@ -20,10 +25,10 @@ var cameraMaxSpeed = 64;
 var cameraSpeedX = 0;
 var cameraSpeedY = 0;
 
-camera.position.x = 32;
-camera.position.y = 32;
-camera.position.z = 2;
-camera.zoom = 80;
+camera.position.x = 22;
+camera.position.y = 25;
+camera.position.z = 100;
+camera.zoom = 2 ** 5;
 
 camera.updateProjectionMatrix();
 
@@ -40,7 +45,7 @@ renderer.setSize(
   Math.floor(wrapper.clientHeight)
 );
 
-renderer.setClearColor(new THREE.Color(1, 1, 1));
+renderer.setClearColor(new THREE.Color("#dfe6e9"));
 
 wrapper.appendChild(renderer.domElement);
 
@@ -66,9 +71,42 @@ window.addEventListener("resize", () => {
 });
 
 window.addEventListener("wheel", (e) => {
-  camera.zoom -= e.deltaY / 25;
-  camera.zoom = Math.max(40, camera.zoom);
+  camera.zoom *= Math.exp(-e.deltaY / 1000);
+  camera.zoom = Math.max(10, camera.zoom);
   camera.updateProjectionMatrix();
+});
+
+function getWorldCoordOfCursor(
+  cursorX: number,
+  cursorY: number
+): [number, number] {
+  let screenX = cursorX - wrapper.clientWidth / 2;
+  let screenY = -(cursorY - wrapper.clientHeight / 2);
+  let worldX = Math.floor(screenX / camera.zoom + camera.position.x);
+  let worldY = Math.floor(screenY / camera.zoom + camera.position.y);
+  return [worldX, worldY];
+}
+
+wrapper.addEventListener("mousemove", (e) => {
+  let [worldX, worldY] = getWorldCoordOfCursor(e.clientX, e.clientY);
+  blockOutline.setCoordinate(new Coordinate(worldX, worldY));
+});
+
+wrapper.addEventListener("mousedown", (e) => {
+  let [worldX, worldY] = getWorldCoordOfCursor(e.clientX, e.clientY);
+  if (e.button == 0) {
+    world.breakBlock(new Coordinate(worldX, worldY));
+  } else if (e.button == 2) {
+    world.placeBlock(
+      new Coordinate(worldX, worldY),
+      blockMenu.selectingMaterialType
+    );
+  }
+});
+
+wrapper.addEventListener("contextmenu", (e) => {
+  e.stopPropagation();
+  e.preventDefault();
 });
 
 window.addEventListener("keydown", (e) => {
@@ -92,6 +130,11 @@ window.addEventListener("keypress", (e) => {
   if (e.key == "g") {
     world.toggleGrid();
   }
+  if (e.key == "o") {
+    world.chunks.forEach(
+      (chunk) => (chunk.simulateWater = !chunk.simulateWater)
+    );
+  }
 });
 
 window.addEventListener("keyup", (e) => {
@@ -109,8 +152,12 @@ window.addEventListener("keyup", (e) => {
 
 const world = new World(scene);
 
-world.loadChunk(new Coordinate(-1, 0));
+// world.loadChunk(new Coordinate(-1, 0));
 world.loadChunk(new Coordinate(0, 0));
-world.loadChunk(new Coordinate(1, 0));
+// world.loadChunk(new Coordinate(1, 0));
 
 loop();
+
+world.toggleGrid();
+
+scene.add(blockOutline);
